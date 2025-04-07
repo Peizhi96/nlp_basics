@@ -25,20 +25,20 @@ class MultiHeadAttention(nn.Module):
 		v = self.v_linear(value) # (batch_size, seq_len, embed_dim)
 
 		# reshape and transpose, (batch_size, num_heads, seq_len, head_dim)
-		q = q.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2) 
-		k = k.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2)
-		v = v.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2) 
+		q = q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2) 
+		k = k.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+		v = v.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2) 
   
 		# calculate attention scores (batch_size, num_heads, seq_len, head_dim)
 		# k.tranpose(-2, -1) (batch_size, num_heads, head_dim, seq_len)
-		scores = torch.matmul(q, k.tranpose(-2, -1)) # (batch_size, num_heads, seq_len_q, seq_len_k)
+		scores = torch.matmul(q, k.transpose(-2, -1)) # (batch_size, num_heads, seq_len_q, seq_len_k)
 
 		# scale scores
 		scores = scores / (self.head_dim ** 0.5)
 
 		# apply mask if provided
 		if mask is not None:
-			scores = scores.masked_fill(mask==0, 1e-9)
+			scores = scores.masked_fill(mask==0, -1e9)
 
 		# apply softmax to get attention weights
 		attention_weight = F.softmax(scores, dim=-1)
@@ -49,7 +49,7 @@ class MultiHeadAttention(nn.Module):
 		# output shape: (batch_size, num_heads, seq_len_q, head_dim)
 		# output.tranpose(1, 2) to (batch_size, seq_len_q, num_heads, head_dim)
 		# reshape output to (batch_size, seq_len, embed_dim)
-		outcat = output.tranpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
+		outcat = output.transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
 		out = self.out_linear(outcat)
 		return output, attention_weight
 
