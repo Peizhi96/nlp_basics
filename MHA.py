@@ -17,34 +17,38 @@ class MultiHeadAttention(nn.Module):
 		self.out_linear = nn.Linear(embed_dim, embed_dim)
 
 	def forward(self, query, key, value, mask=None):
-		batch_size = query.size(0)
+		batch_size = query.size(0) # get the size of batch_size, (batch_size, seq_len, embed_dim)
 
-		#线性变换
-		q = self.q_linear(query)
-		k = self.k_linear(key)
-		v = self.v_linear(value)
+		# linear transformation
+		q = self.q_linear(query) # (batch_size, seq_len, embed_dim)
+		k = self.k_linear(key) # (batch_size, seq_len, embed_dim)
+		v = self.v_linear(value) # (batch_size, seq_len, embed_dim)
 
-		#分割成多头
-		q = q.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2)
+		# reshape and transpose, (batch_size, num_heads, seq_len, head_dim)
+		q = q.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2) 
 		k = k.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2)
-		v = v.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2)
+		v = v.view(batch_size, -1, self.num_heads, self.head_dim).tranpose(1, 2) 
+  
+		# calculate attention scores (batch_size, num_heads, seq_len, head_dim)
+		# k.tranpose(-2, -1) (batch_size, num_heads, head_dim, seq_len)
+		scores = torch.matmul(q, k.tranpose(-2, -1)) # (batch_size, num_heads, seq_len_q, seq_len_k)
 
-		#计算注意力分数
-		scores = torch.matmul(q, k.tranpose(-2, -1))
-
-		#缩放
+		# scale scores
 		scores = scores / (self.head_dim ** 0.5)
 
-		#应用mask
+		# apply mask if provided
 		if mask is not None:
 			scores = scores.masked_fill(mask==0, 1e-9)
 
-		#激活函数
+		# apply softmax to get attention weights
 		attention_weight = F.softmax(scores, dim=-1)
 
-		#加权求和
+		# get weighted sum of values
 		output = torch.matmul(attention_weight, v)
 
+		# output shape: (batch_size, num_heads, seq_len_q, head_dim)
+		# output.tranpose(1, 2) to (batch_size, seq_len_q, num_heads, head_dim)
+		# reshape output to (batch_size, seq_len, embed_dim)
 		outcat = output.tranpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
 		out = self.out_linear(outcat)
 		return output, attention_weight
