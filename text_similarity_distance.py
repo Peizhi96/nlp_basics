@@ -126,3 +126,41 @@ def cosine_similarity(vec1, vec2):
 # It is a measure of the straight-line distance between two points in Euclidean space.
 
 
+# using dynamic programming to calculate the minimum edit distance
+def edit_distance(str1, str2):
+    """
+    Calculate the minimum edit distance between two strings.
+    
+    Parameters:
+    str1 (str): The first string.
+    str2 (str): The second string.
+    
+    Returns:
+    int: Minimum edit distance between the two strings.
+    """
+    m = len(str1)
+    n = len(str2)
+    
+    # dp[i][j] will hold the edit distance between str1[0..i-1] and str2[0..j-1]
+    # Initialize the table with size (m+1) x (n+1)
+    # dp[i][0] = i (deleting all characters from str1)
+    # dp[0][j] = j (inserting all characters to str1)
+    
+    # Create a table to store results of subproblems
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    
+    # Fill the table in bottom-up manner
+    for i in range(m + 1):
+        for j in range(n + 1):
+            if i == 0:
+                dp[i][j] = j  # If first string is empty
+            elif j == 0:
+                dp[i][j] = i  # If second string is empty
+            elif str1[i - 1] == str2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1]  # No operation needed
+            else:
+                dp[i][j] = min(dp[i - 1][j],     # Deletion
+                               dp[i][j - 1],     # Insertion
+                               dp[i - 1][j - 1]) + 1  # Substitution
+    
+    return dp[m][n]

@@ -1,9 +1,29 @@
 from gensim.models import Word2Vec
+import numpy as np
 
 def train_word2vec_model(sentences, vector_size=100, window=5, min_count=1, workers=2):
     sentences = [sentence.split() for sentence in sentences]
     model = Word2Vec(sentences, vector_size=vector_size, window=window, min_count=min_count, workers=workers)
     return model
+
+# create a function to get the document vector
+def get_doc_vector(model, tokens):
+    vectors = [model.wv[word] for word in tokens if word in model.wv]
+    if len(vectors) > 0:
+        return np.mean(vectors, axis=0)
+    else:
+        vector_size = model.vector_size if hasattr(model, 'vector_size') else model.wv.vector_size
+        return np.zeros(vector_size)
+    
+# use cosine similarity to compare the document vectors
+def cosine_similarity(vec1, vec2):
+    dot_product = np.dot(vec1, vec2)
+    norm_a = np.linalg.norm(vec1)
+    norm_b = np.linalg.norm(vec2)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot_product / (norm_a * norm_b)
+    
 
 """
 optimize the hyperparameters of the Word2Vec model
