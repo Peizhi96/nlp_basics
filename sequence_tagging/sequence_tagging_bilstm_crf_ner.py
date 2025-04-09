@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+# pad_sequence is used to pad sequences to the same length
+# pack_padded_sequence is used to pack padded sequences for LSTM
+# pad_packed_sequence is used to unpack packed sequences
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 class BiLSTM_CRF(nn.Module):
@@ -17,9 +20,12 @@ class BiLSTM_CRF(nn.Module):
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
         #bilstm layer
         self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True, batch_first=True)
-        #linear layer
+        #linear layer, this layer is used to map the output of the LSTM to the tag space
         self.hidden2tag = nn.Linear(hidden_dim, tag_size)
-        #crf layer
+        # nn.Parameter to register a parameter can be optimized in a model
+        # it can be updated during training
+        # torhc.randn is used to generate random numbers from a normal distribution, size: tag_size x tag_size
+        # build a transition matrix is to store the transition scores between tags
         self.transitions = nn.Parameter(torch.randn(tag_size, tag_size))
         
         #initialize transition parameters
@@ -27,6 +33,13 @@ class BiLSTM_CRF(nn.Module):
         self.transitions.data[:, 0] = -10000.0 #from any tag to PAD
     
     def _get_lstm_features(self, sentences, lengths):
+        """
+        embeds is the output of the embedding layer
+        packed is the output of the packed sequence
+        lstm_out is the output of the LSTM layer
+        pad_packed_sequence is used to unpack the packed sequence
+        lstm_feats is the output of the linear layer
+        """
         embeds = self.word_embeds(sentences)
         packed = pack_padded_sequence(embeds, lengths, batch_first=True, enforce_sorted=False)
         lstm_out, _ = self.lstm(packed)
@@ -35,7 +48,12 @@ class BiLSTM_CRF(nn.Module):
         return lstm_feats
     
     def _score_sentence(self, feats, tags):
+        # this function is used to calculate the score of a given sequence
+        # feats is the output of the linear layer, tags is the output of the CRF layer
+        
+        # torch.zeros(1) is used to create a tensor of size 1 with all elements set to 0
         scores = torch.zeros(1, device=feats.device)
+        # the first tag is the start tag, so we need to add the transition score from start tag to the first tag
         tags = torch.cat([torch.tensor([self.tag_size-1], device=feats.device).long(), tags])
         
         for i, feat in enumerate(feats):
@@ -43,38 +61,66 @@ class BiLSTM_CRF(nn.Module):
         return scores
     
     def _viterbi_decode(self, feats):
+        # this function is used to decode the best path using Viterbi algorithm
+        # feats is the output of the linear layer
+        # backpointers is used to store the best path
+        # init_vvars is used to initialize the forward variable
         backpointers = []
         init_vvars = torch.full((1, self.tag_size), -10000.0, device=feats.device)
         init_vvars[0][self.tag_size-1] = 0
         
-        # forward variables
+        
+        # init_vvars is used to initialize the forward variable, it contains the score of the start tag
         forward_var = init_vvars
+        # feats is the output of the linear layer, it contains the score of each tag
         for feat in feats:
+            # bptrs_t is used to store the best path, means the best tag for each time step
             bptrs_t = []
+            # viterbivars_t is used to store the best score for each tag
             viterbivars_t = []
             
+            # iterate through all the tags, calculate the score of each tag and store the best tag
             for next_tag in range(self.tag_size):
+                #next_tag_var is to store the total score of the maximum score of the previous tag add the transition score
                 next_tag_var = forward_var + self.transitions[:, next_tag]
+                # argmax is used to get the index of the maximum value
                 best_tag_id = next_tag_var.argmax().item()
+                # bptrs_t is used to store the best tag for each time step
                 bptrs_t.append(best_tag_id)
+                # viterbivars_t is used to store the best score for each tag
+                # view(1) is used to reshape the tensor to (1, tag_size)
                 viterbivars_t.append(next_tag_var[0][best_tag_id].view(1))
             
+            # forward_var is used to store the best score for each tag
+            # cat is used to concatenate the best score for each tag
+            # view(1, -1) is used to reshape the tensor to (1, tag_size)
             forward_var = (torch.cat(viterbivars_t) + feat).view(1, -1)
+            # append the best tag for each time step to the backpointers
+            # backpointers is used to store the best path
             backpointers.append(bptrs_t)
         
+        #terminal_var is used to store the best score for each tag
+        # transitions[:, 0] is used to get the transition score from the last tag to the start tag
         terminal_var = forward_var + self.transitions[:, 0]
+        # argmax is used to get the index of the maximum value
         best_tag_id = terminal_var.argmax().item()
+        # terminal_var[0] means the best score for each tag
         path_score = terminal_var[0][best_tag_id]
         
+        # best_path is initialized with the best tag id
         best_path = [best_tag_id]
+        # reverse(backpointers) is used to reverse the backpointers
+        # this is to simulate the backtracking process
         for bptrs_t in reversed(backpointers):
             best_tag_id = bptrs_t[best_tag_id]
             best_path.append(best_tag_id)
         
+        # best_path[::-1] is used to reverse the best path
         best_path = best_path[::-1]
         return path_score, best_path
     
     def neg_log_likelihood(self, sentence, tags, lengths):
+        # this function is used to calculate the negative log likelihood
         feats = self._get_lstm_features(sentence, lengths)
         batch_size = feats.size(0)
         loss = torch.tensor(0., device=feats.device)
@@ -92,7 +138,7 @@ class BiLSTM_CRF(nn.Module):
         return loss / batch_size
     
     def _forward_alg(self, feats):
-        # 前向算法计算所有可能路径的分数
+        # this function is used to calculate the forward algorithm
         init_alphas = torch.full((1, self.tag_size), -10000., device=feats.device)
         init_alphas[0][self.tag_size-1] = 0.
         
